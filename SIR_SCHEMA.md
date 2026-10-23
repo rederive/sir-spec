@@ -1,4 +1,4 @@
-# SIR Schema — v0.1 FROZEN (2026-06-10) · v0.2 (2026-06-26) · v0.3 + v0.4 (2026-07-01)
+# SIR Schema — v0.1 FROZEN (2026-06-10) · v0.2 (2026-06-26) · v0.3 + v0.4 (2026-07-01) · v0.5 (2026-10-23)
 
 > **Canonical home: [github.com/rederive/sir-spec](https://github.com/rederive/sir-spec).** This copy ships with
 > the plugin and is kept in sync.
@@ -11,6 +11,9 @@
 > lineage in the **2026-07-01 unification** (see the note at §19; those sections were previously published in the
 > site spec under the colliding numbers "v0.2/v0.3 (2026-06-22)" and are renumbered here — no shipped bundle pins
 > that numbering). Earlier sections are unchanged. **Generation now targets v0.4.**
+> v0.5 (§23 + §10/§12 extensions) splits a unit into a language-neutral **primary** and one **language file**
+> per target language, freezes the practiced directive vocabulary, and adds the language-neutral vector encoding
+> `sir-canonical-v1`. Executable form: `rederive/cli/sir/`.
 
 ---
 
@@ -486,4 +489,267 @@ only add semantics for concurrent/scheduled/cancellable units; absence means non
 
 - Transactions / compensation and multi-process effects (carried forward from v0.1).
 - The `ui` domain verbs (carried forward).
-- Cross-language `spec`-variant anchors (carried forward from v0.2's deferred list).
+- Cross-language `spec`-variant anchors (carried forward from v0.2's deferred list). **Leaves the list in v0.5** (§12 extension).
+
+---
+
+# SIR Schema v0.5: primary + per-language files (2026-10-23)
+
+v0.5 lets one unit be shipped in more than one language. A unit's behavior is stated once, in a language-neutral
+**primary** file. What each target language needs to realize that behavior is stated separately, in one
+**language file** per language. Every language is graded against the same oracle, which is encoded once in a
+language-neutral form (§10 extension). v0.5 also freezes the vocabulary the factory actually writes (§23a),
+which until now was practiced but never defined, and it un-defers cross-language anchors (§12 extension).
+
+**Evidence base:** the v0.5 lab (2026-09-22 → 09-28). The re-cut `get_rgb` primary
+(53 lines, rules R1–R9) plus one language file each converged cold emitters in JS, TypeScript and Rust,
+cross-verified 3000/3000. In the Tier A and Tier B pressure tests, `bytes` and `slugify` were verified in all
+three languages and `minimist` in JS and Rust. An independent Python implementation of the §10 encoding agreed
+byte-for-byte with the JS one on both oracle sets it was run against (`get_rgb`, `is_number`).
+
+**Back-compat:** every v0.2–v0.4 bundle remains valid unchanged. A lone `<unit>.sir` with no language file is
+an implicit JS unit, exactly as before.
+
+**Executable form.** The grammar, the vocabulary and the encoding below are implemented once, in
+`rederive/cli/sir/`: `sir-parse.mjs` (one canonical parse and the canonical printer), `canon.mjs`
+(`sir-canonical-v1`), `v05.mjs` (families, binding, the lints) and `validate.mjs`. Every check a validator makes
+is a function over that one parse. Where this text and that code disagree, it is a bug in one of them, and
+`validate.test.mjs` is where it gets a fixture.
+
+## 23a. The practiced vocabulary, frozen
+
+Practice has emitted directives this schema never defined. A census of the 226 shipped primaries found `UNIT`
+228 times against the schema's own `SIR` 9, along with `FIDELITY`, `BEHAVIOR`, `DESCRIPTION`, `INVARIANT`,
+`PROVENANCE`, `SCOPE`, `UNGUARDED-PRECONDITION` and `OUT-OF-DOMAIN`. Mechanical detection needs a defined
+vocabulary, so v0.5 freezes it. The table is generated from the directive table in `sir-parse.mjs`
+(`rederive/cli/sir/directive-table.mjs`), and a test in rederive fails if the two disagree. **File** says where a directive may appear (`E_REGISTER` otherwise). **Kind** says whether it is a
+claim the oracle or a tool checks (*load-bearing*) or an unverified prior (*prose*, §0). A name not in the table
+is an error: `E_UNKNOWN_DIRECTIVE`, or `E_PSEUDOCODE` for `LET` / `FOR` / `RETURN` / `STEP` / `NODE` and their
+kin, or `E_EMITTER_META` for instructions to an emitter (`EMISSION`, `RE-EMITTER`, …), which never belong in
+the artifact.
+
+| directive | file | kind | meaning |
+|---|---|---|---|
+| `UNIT` | both | load-bearing | The unit name; the first line of every file (primary and language). Supersedes `SIR`. |
+| `SIR` | primary | legacy (read only) | The v0.1 header. Read, never written. |
+| `KIND` | primary | load-bearing | `FUNCTIONAL \| STATE \| EFFECT` (§1, §11). |
+| `FIDELITY` | primary | load-bearing | `package \| spec` (§12). Supersedes the `VARIANT` spelling; the manifest `variants` map is unchanged. |
+| `VARIANT` | primary | legacy (read only) | The §12 spelling of `FIDELITY`. Read, never written. |
+| `ANCHOR` | primary | load-bearing | What the contract is anchored to (§12). Also an attribute (`… ANCHOR <ref>`). `ref(<lang>:…)` is the §12 extension. |
+| `SRC` | primary | load-bearing | Source location of the original (§1). |
+| `TRIGGER` | primary | load-bearing | Metadata, never structure (§8). |
+| `REACH` | primary | load-bearing | An off-path unit, kept and marked (§6). |
+| `ORACLE-CLASS` | primary | load-bearing | `deterministic \| trace` (§15). |
+| `TRACE-SEAM` | primary | load-bearing | The injectable effect boundary (§15). |
+| `SEAM` | primary | load-bearing | An export-shape adapter (§16). |
+| `SIG` | both | load-bearing | Primary: the signature over the abstract types (§23b). Language file: the native signature. |
+| `ENVELOPE` | both | load-bearing | The verified input scope (§17). In a language file: a narrowing (any language) or, for `js` only, a widening. |
+| `DEPENDS-ON` | both | load-bearing | Named dependencies (§9), or `none`. Never carried data (`E_CARRIED_AS_DEPENDENCY`). |
+| `DESCRIPTION` | both | prose (unverified prior) | Contract-level prose: what the unit is for. |
+| `BEHAVIOR` | primary | load-bearing | Header for the numbered rules `R1 … Rn` (§23a rule 1). |
+| `INVARIANT` | primary | prose (unverified prior) | A property the oracle should bear out. Prose until a vector pins it. |
+| `TABLE` | primary | load-bearing | A decision table (§13 as a directive). Every row is verified by the oracle. |
+| `PINNED` | both | load-bearing | `PINNED <kind> <name> = <literal>`: a hard requirement. Neutral in the primary, dialect in a language file. Cited (§23a rule 3). |
+| `EARNED` | both | load-bearing | A rule or pin added after an observed divergence: `EARNED round-<n> heldout <vector>`. |
+| `NOTE` | both | prose (unverified prior) | Non-load-bearing prose. Metered (`W_NOTE_DENSITY`). |
+| `RATIONALE` | both | prose (unverified prior) | Why a rule is the way it is. Non-load-bearing. |
+| `SCOPE` | primary | prose (unverified prior) | `IN:` / `OUT:` classification of behavior. |
+| `UNGUARDED-PRECONDITION` | primary | load-bearing | An input condition the unit does not check; behavior outside it is unspecified. |
+| `OUT-OF-DOMAIN` | primary | load-bearing | An input the contract explicitly does not cover, and what (if anything) is promised for it. |
+| `ORACLE` | primary | load-bearing | `ORACLE value -> oracles/<unit>.json CANONICAL-SHA256 <hex>`: the oracle file and its declared hash (§10 extension). |
+| `PROVENANCE` | both | prose (unverified prior) | Where the contract came from: package, version, function, history. |
+| `CARRIED` | both | load-bearing | A carried constant table (§18). Primary: `CARRIED <name> FROM <source>` + `SHAPE` / `CANONICAL-SHA256` / `AUTHORITY`. Language file: where the module is. |
+| `SHAPE` | primary | load-bearing | Sub-field of `CARRIED`: the table's abstract type and entry count. |
+| `CANONICAL-SHA256` | primary | load-bearing | Sub-field of `CARRIED`: the table's canonical hash. (The oracle's hash rides on the `ORACLE` line.) |
+| `AUTHORITY` | primary | load-bearing | Sub-field of `CARRIED`: one re-runnable assertion against the independent authority (§18). |
+| `CARRIED-DATA` | primary | legacy (read only) | The v0.3 spelling of `CARRIED`. Read, never written. |
+| `STATE` | primary | load-bearing | `STATE mutates <arg>`: the unit mutates an argument; the oracle observes `{result, post}` (§2, §11). |
+| `EMIT` | primary | load-bearing | An effect emission that may bind a result (§3). |
+| `REQUEST` | primary | load-bearing | An effect with no outbound payload (§3). |
+| `BRANCH` | primary | load-bearing | A branch over a predicate (§4). |
+| `ON-ERROR` | primary | load-bearing | Error handling as a branch (§4). |
+| `PAR` | primary | load-bearing | An unordered window over sub-traces (§5, §19). |
+| `RING` | primary | load-bearing | Token-coordinated concurrency (§22). |
+| `LIFECYCLE` | primary | load-bearing | A cancellable resource (§21). |
+| `EFFECT` | primary | load-bearing | An effect across a `<domain>.<verb>` boundary (§7). |
+| `SURFACE` | primary | load-bearing | The module surface at `domain.verb` level (§7). |
+| `NOTES` | primary | legacy (read only) | An ad-hoc legacy prose block. Read, never written; becomes `NOTE`. |
+| `GUARD-PINNED` | primary | legacy (read only) | A legacy pinned guard. Read, never written; becomes `PINNED`. |
+| `LANG` | language | load-bearing | Language file only: the language id, which must equal the filename's (§23b). |
+| `PRIMARY-SHA256` | language | load-bearing | Language file only: the canonical-print hash of the primary it was written against (§23b). |
+| `ABI` | language | load-bearing | Language file only: how abstract types map to native ones (text encoding, numeric semantics, crate or module shape). |
+| `MECHANISM` | language | load-bearing | Language file only: which built-ins realize which rules, and anything an emitter in that language would otherwise get wrong. |
+| `R<n>` | primary | load-bearing | One numbered rule under `BEHAVIOR`. |
+
+**The grammar (strict mode, the v0.5 register):**
+
+1. **Lines.** A line starting at column 0 is a directive: `NAME args [ATTR value]…`. Any indented line
+   continues the directive above it, whatever the indentation (tabs, 2 or 4 spaces). The canonical printer
+   emits one layout: the directive at column 0, continuations at two spaces, attributes trailing, no comments.
+   **Every hash in a SIR binds to the canonical print**, so reformatting can never stale a binding.
+2. **No `#` in the grammar.** A `#` outside a literal is a parse error (`E_COMMENT`). Prose has named, parsed,
+   metered homes: `DESCRIPTION`, `NOTE`, `RATIONALE`. Citations are attributes: `… CITED <why>`,
+   `… EARNED round-<n> heldout <vector>`, `… ANCHOR <ref>`. The census that forced this: 89% of all lines in
+   the shipped corpus were `#` comments, including load-bearing pins with no slot of their own. **Legacy mode**
+   still reads the shipped corpus and reports every `#` as a warning. Generation targets strict mode.
+3. **`BEHAVIOR` is numbered rules.** `R1 … Rn`, each a statement about the abstract signature that a blind
+   engineer could implement in more than one way only where the oracle leaves room. Pipeline or
+   `STEP`/`BRANCH` narration of the original's control flow is rejected; the oracle pins the edges. Accidents
+   of the original that the oracle pins are rules too, stated as behavior and cited (`CITED FIDELITY package`).
+   A deterministic transcription lint measures code shapes in the primary (`typeof`, `=>`, `.match(`,
+   `if (`, `return`, dialect regex literals, …). Its density is a warning, and an error under
+   `--enforce-density`, the pack-time policy (gate 10%).
+4. **Hard requirements get a typed, cited slot.** `TABLE` is a decision table (§13 promoted to a directive),
+   and every row is verified by the oracle. `PINNED <kind> <name> = <literal>` holds a literal the behavior
+   genuinely rides on. In the **primary** a pin must be language-neutral: a character set as code points, a
+   byte string, a grammar. A dialect regex is a **language-file** pin: its accept-set is the contract, and the
+   pattern is one rendering of it. **No pin without a citation** (`E_UNCITED_PIN`): every `PINNED` and
+   `EARNED` line carries `CITED`, `EARNED` or `ANCHOR`. Literals are transcribed only on proven need.
+5. **Legacy spellings** (`SIR`, `VARIANT`, `CARRIED-DATA`, `NOTES`, `GUARD-PINNED`, `UNIT: name` with a
+   colon) are read, reported, and never written.
+
+## 23b. PRIMARY + per-language files (forced addition 11)
+
+**Files.** A unit's contract is a family:
+
+```
+sir/<unit>.sir            the PRIMARY: behavior, once, over abstract types
+sir/<unit>.<lang>.sir     one LANGUAGE FILE per target language
+sir/<unit>.carried.json   carried data, as §18 (unchanged)
+```
+
+`<lang>` comes from a **closed registry**: `js`, `ts`, `rust`, `php`, `csharp`, `python`. The registry is
+versioned like §7's domain set and lives in the capability model (`rederive/cli/capabilities.json`,
+`toolchain.languageRegistry`). A suffix outside it is a malformed bundle (`E_LANG_REGISTRY`), not a new
+language. A lone `<unit>.sir` is an implicit `js` unit.
+
+**The firewall, both ways.** The primary may not contain language mechanism. The language-leak lint rejects
+dialect regexes, built-in names and host value names in a primary (`E_LANGUAGE_LEAK`). A language file may not
+contain behavior: no `BEHAVIOR`, no rules, no `INVARIANT` (`E_REGISTER`). Before v0.5 there was nowhere to put
+mechanism, so the shipped "neutral" exemplars carried JS regex flavor, JS `\S`, the JS line-terminator set and
+`Math.min` in their bodies. The split gives that material a home and makes its absence from the primary
+checkable.
+
+**A language file contains only:**
+
+| directive | content |
+|---|---|
+| `UNIT` | the unit name (must match the primary) |
+| `LANG <id>` | the language; must equal the filename's |
+| `PRIMARY-SHA256 <hex>` | the canonical-print hash of the primary it was written against |
+| `SIG` | the native signature (e.g. `pub fn get_rgb(input: &str) -> Option<(f64, f64, f64, f64)>`) |
+| `ABI` | how abstract types map to native ones: text encoding, numeric semantics, the artifact's module or crate shape |
+| `MECHANISM` | which built-ins realize which rules; the regex dialect; anything an emitter in this language would otherwise get wrong |
+| `ENVELOPE` | optional. A **narrowing**: what this language cannot represent (Rust: a lone surrogate). For `js` only, a **widening**: values beyond the abstract types the JS variant also handles, graded from a js-native extension oracle (§10 ext.) |
+| `PINNED … CITED …` | dialect pins |
+| `CARRIED <name> = <module>` | where this language's carried table lives |
+| `DEPENDS-ON` | per-language named dependencies (§9), e.g. `OPAQUE(rederive.php.mul_u64)`, or `none` |
+| `NOTE`, `PROVENANCE` | prose |
+
+**Binding and staleness.** A language file's `PRIMARY-SHA256` is the SHA-256 of the primary's canonical print.
+When the primary changes, every language file bound to the old print is **stale**: declared, not a claim
+(`E_STALE_BINDING`; `E_UNBOUND` when the line is missing). A stale file is never graded. The toolchain stamps
+the binding (`bind`). The author never computes it.
+
+**The abstract type vocabulary** (closed and versioned, `canon.mjs` `TYPES`):
+
+| type | meaning |
+|---|---|
+| `text` | a sequence of Unicode scalar values |
+| `bytes` | a byte string |
+| `bool` | true or false |
+| `none` | the absent value; equals only itself |
+| `i64` / `u64` | 64-bit integers, compared exactly. NaN, infinities and fractions can never occupy an integer slot |
+| `f64` | an IEEE-754 double, compared on its bits (§10 ext.) |
+| `json` | `none \| bool \| f64 \| text \| list[json] \| map[text, json]`. No `undefined`, functions, dates, boxed wrappers or regexes: those are envelope facts |
+| `tuple[T, …]` `list[T]` `map[K, V]` `record[a: T, …]` | composites. A record's fields are compared in declared order |
+| `T \| U` | a union. `T \| none` is the optional form |
+| `...name: T` | a rest parameter (last only). The vector stays call-shaped; each language maps it natively |
+
+A host value with no meaning in this vocabulary is not representable in the primary's `SIG`. It belongs in the
+`js` file's envelope widening.
+
+**Verification rungs** (a variant records the highest it earned; none is implied by another language's):
+`type-checked` (the artifact satisfies its language file's `SIG` under the language's own checker: `tsc --strict`
+with explicit `any` rejected, `cargo check`; JS cannot earn it) → `harness-verified` (one language, frozen +
+held-out against the primary oracle, through a **verifier-owned** harness; adapters live in the verifier, never in
+a publisher's bundle, as §15) → `cross-verified` (two or more languages agree on held-out *and* on a differential
+against each other) → `oracle-anchored` (the primary oracle is `ANCHOR ref(<lang>:…)`-anchored, so agreement is
+not self-consistency).
+
+## 10. Extension (v0.5): the language-neutral vector encoding `sir-canonical-v1`
+
+Mandatory for every oracle a `lang-variant` bundle carries; optional before that. Every value is tagged with its
+abstract type, keyed by the primary's `SIG`, never by a native quirk:
+
+| tag | carries | rule |
+|---|---|---|
+| `{t:'none'}` | — | equals only `none` |
+| `{t:'bool', v}` | `true`/`false` | |
+| `{t:'text', v, cu}` | the string | `cu:'utf8'` = Unicode scalar values. A lone surrogate has no utf8 form: the neutral encoder rejects it (an envelope fact). Only a js-native extension may hold it, tagged `cu:'utf16'` |
+| `{t:'bytes', v}` | `base64:<…>` | |
+| `{t:'i64'\|'u64', v}` | a decimal string | exact. Range-checked at encode time |
+| `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
+| `{t:'tuple'\|'list', v:[…]}` | elements | |
+| `{t:'map', v:[[k, x], …]}` | entries | sorted by the canonical string of the key |
+| `{t:'record', v:[[name, x], …]}` | fields | in declared order |
+| `{t:'throw', msg}` | — | a throw is an **observation**, not a value. That it threw is the claim; `msg` is a display hint |
+
+**The canonical string** is the compact JSON of the tagged value with keys sorted, with each `f64` reduced to
+`{bits, t}` and each `throw` to `{t}`. Equality, everywhere, is equality of canonical strings. The oracle
+file declares `encoding: "sir-canonical-v1"` and a `canonicalSha256` = SHA-256 of the canonical string of
+`{frozen: [{args, expected}…], heldout: […]}`. The primary's `ORACLE` line carries the same hash
+(`ORACLE value -> oracles/<unit>.json CANONICAL-SHA256 <hex>`). A grader verifies both the file's hash
+(`E_ORACLE_FILE_SHA`) and the primary's declaration (`E_ORACLE_DECLARED_SHA`) before grading anything. A
+reader fetches each hash **by directive**: a primary that carries a table has two canonical hashes, and "the
+first `CANONICAL-SHA256` in the file" is the wrong one.
+
+**Envelope extension.** Vectors whose values have no neutral meaning (a boxed `Number`, a `RegExp`, `undefined`,
+a sparse array) are refused by the neutral encoder. A legacy oracle's such vectors move to
+`oracles/<unit>.js.json` (`encoding: js-native-v0.4`, `envelope: js`), graded only by the `js` variant and
+declared by the `.js.sir`'s `ENVELOPE` widening. That is how a JS-shaped unit coexists with the neutral form
+without the form absorbing JS quirks. Legacy oracles are **re-encoded** losslessly, never regenerated
+(`encode-oracle`): the same vectors, with the original kept as `<unit>.legacy.json`.
+
+## 12. Extension (v0.5): cross-language anchors
+
+`ANCHOR ref(<lang>:<reference>)`, either as a directive or as an attribute, anchors a fidelity variant to a
+reference implementation in another language, e.g. `ANCHOR ref(python:botocore.auth.SigV4Auth)` for an `aws4`
+unit. The reference is executed through that language's verifier-owned harness, and its outputs, encoded in
+`sir-canonical-v1`, are the oracle. Agreement across languages is then anchored to an independent authority
+rather than to each other. Detected mechanically as the `cross-lang-anchor` feature.
+
+## Bundle contract v0.5
+
+`manifest.specVersion = "0.5"`. A unit carries one variant per language in the existing `variants` map (§14),
+keyed `lang:<id>`:
+
+```
+"variants": {
+  "package":   { …the v0.4 fields… },
+  "lang:rust": { "lang": "rust", "sir": "sir/<unit>.rust.sir", "langSha256": "…",
+                 "primarySha256": "…", "oracle": "oracles/<unit>.json", "oracleSha256": "…",
+                 "src": "src/<unit>.rs", "srcSha256": "…", "verified": { "rung": "cross-verified", … } }
+}
+```
+
+`src` is optional: a variant without it is **spec-only**, shipped for the consumer to re-derive locally.
+`verified {rung}` appears only where an artifact was actually verified. The features are `lang-variant`
+(detected from a `<unit>.<lang>.sir` file or a `lang:<id>` key) and `cross-lang-anchor`. An rdv declares the
+**languages it can harness** beside the features it implements, and halts naming the missing language. It reads
+the bundle's shape itself (variant keys, per-language SIR paths), never only the bundle's declared `features`,
+so an under-stamped bundle halts too. A factory never stamps a feature the verifier cannot check: it refuses to
+pack instead.
+
+**Status at this version:** the format, the vocabulary, the encoding and the validator are implemented. The
+language capability model is in place, with `lang-variant` and `cross-lang-anchor` declared and **not yet
+implemented** by a released rdv, which today harnesses `js` only. They flip to implemented per language as each
+verifier-owned driver ships (TypeScript first, then Rust).
+
+## Deferred (v0.5)
+
+- Transactions / compensation and multi-process effects (carried forward from v0.1).
+- The `ui` domain verbs (carried forward).
+- Language-file inheritance (`EXTENDS`, e.g. `ts` from `js`). Language files are self-contained in v0.5.
+- `CARRIED` sub-fields (`SHAPE`, `CANONICAL-SHA256`, `AUTHORITY`) as scoped AST children. Today they parse as
+  continuations of `CARRIED`.

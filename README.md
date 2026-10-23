@@ -4,7 +4,7 @@ The specification for **SIR verified-recompose**: decompile a code unit into a l
 contract (a SIR + a frozen, held-out oracle), reconstruct it blind, and accept only what independent rebuilds
 prove on inputs they never saw.
 
-**The normative document is [`SIR_SCHEMA.md`](SIR_SCHEMA.md)** — currently **v0.4** (v0.1 frozen 2026-06-10;
+**The normative document is [`SIR_SCHEMA.md`](SIR_SCHEMA.md)** — currently **v0.5** (v0.1 frozen 2026-06-10;
 every change since is a versioned, evidence-cited addition, never a silent edit). A narrative introduction with
 worked examples lives at **[rederive.ai/spec.html](https://rederive.ai/spec.html)**.
 
