@@ -652,8 +652,10 @@ checkable.
 spaces and tabs are removed; lines left empty are dropped (only spaces and tabs count as blank: a no-break space or any
 other whitespace is content); a line's leading run of spaces and tabs becomes exactly two spaces. The lines are joined
 with LF plus a final LF, and a primary with no lines left has the empty canonical text. Those are the only freedoms:
-every other character, comments included, is covered. A primary that is not well-formed Unicode (a lone surrogate) has
-no canonical text: UTF-8 cannot carry it. **The parser reads exactly these lines**, so two primaries with the same
+every other character, comments included, is covered. A SIR file is valid UTF-8 (`E_NOT_UNICODE` otherwise: a lenient
+reader would turn every invalid byte sequence into U+FFFD, and files differing only there would bind alike), and text
+holding a lone surrogate has no canonical text. The parser treats a line of any whitespace as blank, a superset of the
+binding's spaces-and-tabs rule, so the binding always covers at least what the parser reads. **The parser reads exactly these lines**, so two primaries with the same
 binding always parse identically, and the normalization is idempotent. (Until 2026-10-26 the binding hashed the
 canonical *print*, which dropped or merged content: a later `CITED` overwrote an earlier one, a legacy ` # ` cut a
 literal, orphan lines vanished. A verifier still recognizes such a binding and reports it as `W_LEGACY_BINDING`,
