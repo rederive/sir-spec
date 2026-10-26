@@ -648,13 +648,17 @@ checkable.
 | `NOTE`, `PROVENANCE` | prose |
 
 **Binding and staleness.** A language file's `PRIMARY-SHA256` is the SHA-256 (of the UTF-8 bytes) of the primary's
-**canonical text**: the primary with a leading BOM removed, split into lines at CRLF, CR or LF, trailing spaces and
-tabs removed from each line, blank lines dropped, a continuation line's leading run of spaces and tabs replaced by
-exactly two spaces, and the lines joined with LF plus a final LF. Those are the only freedoms: every other
-character, comments included, is covered, and the normalization is idempotent. (Until 2026-10-26 the binding
-hashed the canonical *print*, which dropped or merged content: a later `CITED` overwrote an earlier one, a legacy
-` # ` cut a literal, orphan lines vanished. A verifier still recognizes such a binding and reports it as
-`W_LEGACY_BINDING`, valid but under-covering; `bind` never writes one, and a v0.5 bundle may not carry one.)
+**canonical text**. The primary is split into lines at CRLF, CR or LF. On every line, leading U+FEFF marks and trailing
+spaces and tabs are removed; lines left empty are dropped (only spaces and tabs count as blank: a no-break space or any
+other whitespace is content); a line's leading run of spaces and tabs becomes exactly two spaces. The lines are joined
+with LF plus a final LF, and a primary with no lines left has the empty canonical text. Those are the only freedoms:
+every other character, comments included, is covered. A primary that is not well-formed Unicode (a lone surrogate) has
+no canonical text: UTF-8 cannot carry it. **The parser reads exactly these lines**, so two primaries with the same
+binding always parse identically, and the normalization is idempotent. (Until 2026-10-26 the binding hashed the
+canonical *print*, which dropped or merged content: a later `CITED` overwrote an earlier one, a legacy ` # ` cut a
+literal, orphan lines vanished. A verifier still recognizes such a binding and reports it as `W_LEGACY_BINDING`,
+valid but under-covering; `bind` never writes one, and a v0.5 bundle may not carry one. Both rules were found by
+rederive re-deriving its own kernel.)
 When the primary changes, every language file bound to the old text is **stale**: declared, not a claim
 (`E_STALE_BINDING`; `E_UNBOUND` when the line is missing). A stale file is never graded. The toolchain stamps
 the binding (`bind`). The author never computes it.
@@ -706,7 +710,7 @@ abstract type, keyed by the primary's `SIG`, never by a native quirk:
 **The canonical string** is defined on a canonical tree only: strings, booleans, arrays and maps (every number is
 a tagged value, and none is `{t:'none'}`). Anything else is an error, never rendered: a raw number, null, an array
 hole, a non-map object, or an `f64` tag whose `bits` is not 16 lowercase hex digits. `t` is a reserved key: a map
-whose `t` is `f64` reduces to `{bits, t}` and one whose `t` is `throw` reduces to `{t}`. Map keys sort by **UTF-16
+whose `t` is `f64` reduces to `{bits, t}` and one whose `t` is `throw` reduces to `{t}`; the fields a reduction drops are not examined. Map keys sort by **UTF-16
 code units** (which differs from code-point order for astral characters against U+E000–U+FFFF). Strings are escaped
 exactly as ECMAScript `JSON.stringify` escapes them: `\"` `\\` `\b` `\f` `\n` `\r` `\t`, every other control character
 and every lone surrogate as lowercase `\u00xx` / `\udxxx`, and everything else (U+2028, U+2029, DEL, `/`) raw.
