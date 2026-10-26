@@ -705,7 +705,7 @@ abstract type, keyed by the primary's `SIG`, never by a native quirk:
 | `{t:'i64'\|'u64', v}` | a decimal string | exact. Range-checked at encode time |
 | `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). `v` is informative output of the encoder that wrote it: it never enters the canonical string, and another language's encoder may write its own shortest form. **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
 | `{t:'tuple'\|'list', v:[…]}` | elements | |
-| `{t:'map', v:[[k, x], …]}` | entries | sorted by the canonical string of the key |
+| `{t:'map', v:[[k, x], …]}` | entries | sorted by the key: a text key by its UTF-16 code units, any other key by its canonical string (one order for typed and `json` maps) |
 | `{t:'record', v:[[name, x], …]}` | fields | in declared order |
 | `{t:'throw', msg}` | — | a throw is an **observation**, not a value. That it threw is the claim; `msg` is a display hint |
 
@@ -717,8 +717,10 @@ code units** (which differs from code-point order for astral characters against 
 exactly as ECMAScript `JSON.stringify` escapes them: `\"` `\\` `\b` `\f` `\n` `\r` `\t`, every other control character
 and every lone surrogate as lowercase `\u00xx` / `\udxxx`, and everything else (U+2028, U+2029, DEL, `/`) raw.
 Two independent implementations hold to this byte for byte (`canon.mjs`, `canon.py`). Equality, everywhere, is
-equality of canonical strings. *Open item:* a `map[K, V]` sorts its entries by the canonical string of the key,
-while a `json` map sorts by the key's code units; the two orders differ for keys containing escaped characters. The oracle
+equality of canonical strings. An absent value (a missing record field, JS
+`undefined`) encodes as `none` only where the type admits `none` explicitly (a `none` alternative); under `json` it is an
+envelope fact, not a value. (Until 2026-10-26 a `map[K, V]` sorted by the key's escaped canonical string while a `json` map
+sorted by code units; no existing oracle's 1,339 multi-entry maps changed order when they were made one rule.) The oracle
 file declares `encoding: "sir-canonical-v1"` and a `canonicalSha256` = SHA-256 of the canonical string of
 `{frozen: [{args, expected}…], heldout: […]}`: both lists present, every case a map with `args` (a list) and `expected`; any other
 shape is not an oracle and hashing it is an error, as is hashing one whose values are not yet canonical trees. Only `args` and
