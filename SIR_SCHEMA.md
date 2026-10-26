@@ -729,11 +729,17 @@ keyed `lang:<id>`:
   "package":   { …the v0.4 fields… },
   "lang:rust": { "lang": "rust", "sir": "sir/<unit>.rust.sir", "langSha256": "…",
                  "primarySha256": "…", "oracle": "oracles/<unit>.json", "oracleSha256": "…",
-                 "src": "src/<unit>.rs", "srcSha256": "…", "verified": { "rung": "cross-verified", … } }
+                 "src": "src/<unit>-rs", "srcSha256": "…", "verified": { "rung": "cross-verified", … } }
 }
 ```
 
-`src` is optional: a variant without it is **spec-only**, shipped for the consumer to re-derive locally.
+`src` is optional: a variant without it is **spec-only**, shipped for the consumer to re-derive locally. A `src` is a
+file (`src/<unit>.mjs`, `src/<unit>.ts`) or, for a language whose artifact is a project, a directory: a Rust artifact is
+its library crate (`Cargo.toml`, `Cargo.lock` when it has dependencies, `src/`), built with exactly the locked versions.
+A directory's `srcSha256` is its **tree hash**: sha256 over the sorted lines `<relative path>\0<sha256 of the file>\n`
+for every file except build output (`target/`). The variant's oracle is the unit's one canonical oracle (§10
+`sir-canonical-v1`), whose vector-set hash a verifier checks against the file's `canonicalSha256` and the primary's
+`ORACLE … CANONICAL-SHA256` before grading anything.
 `verified {rung}` appears only where an artifact was actually verified. The features are `lang-variant`
 (detected from a `<unit>.<lang>.sir` file or a `lang:<id>` key) and `cross-lang-anchor`. An rdv declares the
 **languages it can harness** beside the features it implements, and halts naming the missing language. It reads
@@ -741,10 +747,15 @@ the bundle's shape itself (variant keys, per-language SIR paths), never only the
 so an under-stamped bundle halts too. A factory never stamps a feature the verifier cannot check: it refuses to
 pack instead.
 
-**Status at this version:** the format, the vocabulary, the encoding and the validator are implemented. The
-language capability model is in place, with `lang-variant` and `cross-lang-anchor` declared and **not yet
-implemented** by a released rdv, which today harnesses `js` only. They flip to implemented per language as each
-verifier-owned driver ships (TypeScript first, then Rust).
+**Status at this version:** the format, the vocabulary, the encoding and the validator are implemented, and so is
+`lang-variant` for **js, ts and rust**, each through a verifier-owned driver. **ts** reaches `type-checked` with
+`tsc --strict` plus a SIG-conformance check (the artifact must be assignable to its language file's `SIG`; `any`, `!`
+and `@ts-ignore` are rejected), then grades its emitted JavaScript. **rust** reaches `type-checked` with `cargo check`
+plus a harness generated from the primary's abstract `SIG`, which pins every argument type and every scalar result
+type, then grades the binary over stdin/stdout, f64 by its bits and u64/i64 exactly. A verifier checks rungs up to
+`harness-verified`; a bundle's claimed `cross-verified` is reported, not re-checked. Toolchains are the consumer's own:
+a variant whose toolchain is absent halts the check with the install hint. `cross-lang-anchor` is declared and not
+yet implemented, as is carried data inside a language variant.
 
 ## Deferred (v0.5)
 
