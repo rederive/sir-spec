@@ -576,7 +576,7 @@ the artifact.
 | `NOTES` | primary | legacy (read only) | An ad-hoc legacy prose block. Read, never written; becomes `NOTE`. |
 | `GUARD-PINNED` | primary | legacy (read only) | A legacy pinned guard. Read, never written; becomes `PINNED`. |
 | `LANG` | language | load-bearing | Language file only: the language id, which must equal the filename's (§23b). |
-| `PRIMARY-SHA256` | language | load-bearing | Language file only: the canonical-print hash of the primary it was written against (§23b). |
+| `PRIMARY-SHA256` | language | load-bearing | Language file only: the canonical-text hash of the primary it was written against (§23b). |
 | `ABI` | language | load-bearing | Language file only: how abstract types map to native ones (text encoding, numeric semantics, crate or module shape). |
 | `MECHANISM` | language | load-bearing | Language file only: which built-ins realize which rules, and anything an emitter in that language would otherwise get wrong. |
 | `R<n>` | primary | load-bearing | One numbered rule under `BEHAVIOR`. |
@@ -586,7 +586,8 @@ the artifact.
 1. **Lines.** A line starting at column 0 is a directive: `NAME args [ATTR value]…`. Any indented line
    continues the directive above it, whatever the indentation (tabs, 2 or 4 spaces). The canonical printer
    emits one layout: the directive at column 0, continuations at two spaces, attributes trailing, no comments.
-   **Every hash in a SIR binds to the canonical print**, so reformatting can never stale a binding.
+   **Bindings do not hash the print.** They hash the primary's **canonical text** (§23b), a formatting-only
+   normalization, so reformatting can never stale a binding and no content edit can escape one.
 2. **No `#` in the grammar.** A `#` outside a literal is a parse error (`E_COMMENT`). Prose has named, parsed,
    metered homes: `DESCRIPTION`, `NOTE`, `RATIONALE`. Citations are attributes: `… CITED <why>`,
    `… EARNED round-<n> heldout <vector>`, `… ANCHOR <ref>`. The census that forced this: 89% of all lines in
@@ -636,7 +637,7 @@ checkable.
 |---|---|
 | `UNIT` | the unit name (must match the primary) |
 | `LANG <id>` | the language; must equal the filename's |
-| `PRIMARY-SHA256 <hex>` | the canonical-print hash of the primary it was written against |
+| `PRIMARY-SHA256 <hex>` | the canonical-text hash of the primary it was written against |
 | `SIG` | the native signature (e.g. `pub fn get_rgb(input: &str) -> Option<(f64, f64, f64, f64)>`) |
 | `ABI` | how abstract types map to native ones: text encoding, numeric semantics, the artifact's module or crate shape |
 | `MECHANISM` | which built-ins realize which rules; the regex dialect; anything an emitter in this language would otherwise get wrong |
@@ -646,8 +647,15 @@ checkable.
 | `DEPENDS-ON` | per-language named dependencies (§9), e.g. `OPAQUE(rederive.php.mul_u64)`, or `none` |
 | `NOTE`, `PROVENANCE` | prose |
 
-**Binding and staleness.** A language file's `PRIMARY-SHA256` is the SHA-256 of the primary's canonical print.
-When the primary changes, every language file bound to the old print is **stale**: declared, not a claim
+**Binding and staleness.** A language file's `PRIMARY-SHA256` is the SHA-256 (of the UTF-8 bytes) of the primary's
+**canonical text**: the primary with a leading BOM removed, split into lines at CRLF, CR or LF, trailing spaces and
+tabs removed from each line, blank lines dropped, a continuation line's leading run of spaces and tabs replaced by
+exactly two spaces, and the lines joined with LF plus a final LF. Those are the only freedoms: every other
+character, comments included, is covered, and the normalization is idempotent. (Until 2026-10-26 the binding
+hashed the canonical *print*, which dropped or merged content: a later `CITED` overwrote an earlier one, a legacy
+` # ` cut a literal, orphan lines vanished. A verifier still recognizes such a binding and reports it as
+`W_LEGACY_BINDING`, valid but under-covering; `bind` never writes one, and a v0.5 bundle may not carry one.)
+When the primary changes, every language file bound to the old text is **stale**: declared, not a claim
 (`E_STALE_BINDING`; `E_UNBOUND` when the line is missing). A stale file is never graded. The toolchain stamps
 the binding (`bind`). The author never computes it.
 
@@ -695,8 +703,16 @@ abstract type, keyed by the primary's `SIG`, never by a native quirk:
 | `{t:'record', v:[[name, x], …]}` | fields | in declared order |
 | `{t:'throw', msg}` | — | a throw is an **observation**, not a value. That it threw is the claim; `msg` is a display hint |
 
-**The canonical string** is the compact JSON of the tagged value with keys sorted, with each `f64` reduced to
-`{bits, t}` and each `throw` to `{t}`. Equality, everywhere, is equality of canonical strings. The oracle
+**The canonical string** is defined on a canonical tree only: strings, booleans, arrays and maps (every number is
+a tagged value, and none is `{t:'none'}`). Anything else is an error, never rendered: a raw number, null, an array
+hole, a non-map object, or an `f64` tag whose `bits` is not 16 lowercase hex digits. `t` is a reserved key: a map
+whose `t` is `f64` reduces to `{bits, t}` and one whose `t` is `throw` reduces to `{t}`. Map keys sort by **UTF-16
+code units** (which differs from code-point order for astral characters against U+E000–U+FFFF). Strings are escaped
+exactly as ECMAScript `JSON.stringify` escapes them: `\"` `\\` `\b` `\f` `\n` `\r` `\t`, every other control character
+and every lone surrogate as lowercase `\u00xx` / `\udxxx`, and everything else (U+2028, U+2029, DEL, `/`) raw.
+Two independent implementations hold to this byte for byte (`canon.mjs`, `canon.py`). Equality, everywhere, is
+equality of canonical strings. *Open item:* a `map[K, V]` sorts its entries by the canonical string of the key,
+while a `json` map sorts by the key's code units; the two orders differ for keys containing escaped characters. The oracle
 file declares `encoding: "sir-canonical-v1"` and a `canonicalSha256` = SHA-256 of the canonical string of
 `{frozen: [{args, expected}…], heldout: […]}`. The primary's `ORACLE` line carries the same hash
 (`ORACLE value -> oracles/<unit>.json CANONICAL-SHA256 <hex>`). A grader verifies both the file's hash
