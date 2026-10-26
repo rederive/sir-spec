@@ -703,7 +703,7 @@ abstract type, keyed by the primary's `SIG`, never by a native quirk:
 | `{t:'text', v, cu}` | the string | `cu:'utf8'` = Unicode scalar values. A lone surrogate has no utf8 form: the neutral encoder rejects it (an envelope fact). Only a js-native extension may hold it, tagged `cu:'utf16'` |
 | `{t:'bytes', v}` | `base64:<…>` | |
 | `{t:'i64'\|'u64', v}` | a decimal string | exact. Range-checked at encode time |
-| `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
+| `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). `v` is informative output of the encoder that wrote it: it never enters the canonical string, and another language's encoder may write its own shortest form. **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
 | `{t:'tuple'\|'list', v:[…]}` | elements | |
 | `{t:'map', v:[[k, x], …]}` | entries | sorted by the canonical string of the key |
 | `{t:'record', v:[[name, x], …]}` | fields | in declared order |
@@ -720,7 +720,9 @@ Two independent implementations hold to this byte for byte (`canon.mjs`, `canon.
 equality of canonical strings. *Open item:* a `map[K, V]` sorts its entries by the canonical string of the key,
 while a `json` map sorts by the key's code units; the two orders differ for keys containing escaped characters. The oracle
 file declares `encoding: "sir-canonical-v1"` and a `canonicalSha256` = SHA-256 of the canonical string of
-`{frozen: [{args, expected}…], heldout: […]}`. The primary's `ORACLE` line carries the same hash
+`{frozen: [{args, expected}…], heldout: […]}`: both lists present, every case a map with `args` (a list) and `expected`; any other
+shape is not an oracle and hashing it is an error, as is hashing one whose values are not yet canonical trees. Only `args` and
+`expected` count: a case's `name` and every other field are ignored. The primary's `ORACLE` line carries the same hash
 (`ORACLE value -> oracles/<unit>.json CANONICAL-SHA256 <hex>`). A grader verifies both the file's hash
 (`E_ORACLE_FILE_SHA`) and the primary's declaration (`E_ORACLE_DECLARED_SHA`) before grading anything. A
 reader fetches each hash **by directive**: a primary that carries a table has two canonical hashes, and "the
@@ -743,7 +745,11 @@ rather than to each other. Detected mechanically as the `cross-lang-anchor` feat
 
 ## Bundle contract v0.5
 
-`manifest.specVersion = "0.5"`. A unit carries one variant per language in the existing `variants` map (§14),
+`manifest.specVersion = "0.5"`. A spec version is ASCII digits in dot-separated segments (`0.5`, `0.10`), no sign, prefix,
+suffix or leading zeros; a verifier that cannot read one halts. It states the version a bundle **targets** (the highest `since`
+of the features it uses), never a claim that any verifier can check those features: that is decided by the verifier's own
+gates (its implemented features and harnessed languages) and by the factory's refusal to pack what no released verifier
+implements. A unit carries one variant per language in the existing `variants` map (§14),
 keyed `lang:<id>`:
 
 ```
