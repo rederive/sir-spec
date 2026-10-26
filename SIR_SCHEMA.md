@@ -701,11 +701,11 @@ abstract type, keyed by the primary's `SIG`, never by a native quirk:
 | `{t:'none'}` | — | equals only `none` |
 | `{t:'bool', v}` | `true`/`false` | |
 | `{t:'text', v, cu}` | the string | `cu:'utf8'` = Unicode scalar values. A lone surrogate has no utf8 form: the neutral encoder rejects it (an envelope fact). Only a js-native extension may hold it, tagged `cu:'utf16'` |
-| `{t:'bytes', v}` | `base64:<…>` | |
-| `{t:'i64'\|'u64', v}` | a decimal string | exact. Range-checked at encode time |
-| `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). `v` is informative output of the encoder that wrote it: it never enters the canonical string, and another language's encoder may write its own shortest form. **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
+| `{t:'bytes', v}` | `base64:<…>` | canonical base64: padded, and the padding bits zero (`AR==` is not a second spelling of `AQ==`) |
+| `{t:'i64'\|'u64', v}` | a decimal string | exact. Range-checked at encode time. One spelling per value: no `-0`, no leading zeros |
+| `{t:'f64', v, bits}` | display decimal + 16 hex digits of IEEE-754 bits | **the bits are normative, `v` is a display hint** (shortest-roundtrip renderings differ across languages: Python `255.0`, JS `255`). `v` is informative output of the encoder that wrote it: it never enters the canonical string, and another language's encoder may write its own shortest form. **`bits` is exactly 16 lowercase hex digits**, written and read back strictly: uppercase, a shorter or longer string, or a trailing newline is not bits (a regex `$` that matches before a final newline accepts one). **NaN rule:** every NaN, of any payload or sign, is canonicalized at encode time to `7ff8000000000000`, so NaN equals NaN, and a decoder reads no other NaN bits. The sign and payload of a NaN are therefore **deliberately not observable**: an oracle cannot tell a function returning −NaN from one returning +NaN. `-0` ≠ `+0`; `±Infinity` are distinct; no tolerance |
 | `{t:'tuple'\|'list', v:[…]}` | elements | |
-| `{t:'map', v:[[k, x], …]}` | entries | sorted by the key: a text key by its UTF-16 code units, any other key by its canonical string (one order for typed and `json` maps) |
+| `{t:'map', v:[[k, x], …]}` | entries | sorted by the key: a text key by its UTF-16 code units, any other key by its canonical string (one order for typed and `json` maps). The two are compared **in one space**: a raw text key against the canonical string of a non-text key, which begins with `{` (U+007B). So in a map mixing them, a text key whose first unit is above U+007B (`\|`, `}`, `~`, anything non-ASCII) sorts after every non-text key. Deliberate, and held by both implementations |
 | `{t:'record', v:[[name, x], …]}` | fields | in declared order |
 | `{t:'throw', msg}` | — | a throw is an **observation**, not a value. That it threw is the claim; `msg` is a display hint |
 
