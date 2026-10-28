@@ -16,6 +16,8 @@ worked examples lives at **[rederive.ai/spec.html](https://rederive.ai/spec.html
 - Verification is earned by the round-trip gate, original deleted: N independent blind re-emissions must agree
   on the full held-out set.
 - The verifier must be immovable from the seat of the party being verified.
+- v0.5: a unit is one language-neutral **primary** plus **one language file per target language** (`js`, `ts`,
+  `rust` today), and every language is graded against the same oracle in the `sir-canonical-v1` encoding.
 
 ## Implementations
 
@@ -24,6 +26,16 @@ worked examples lives at **[rederive.ai/spec.html](https://rederive.ai/spec.html
 | `rdv` | the trust-nothing verifier (`check` / `resynth`) | [npm `rederive`](https://www.npmjs.com/package/rederive) · [source](https://github.com/rederive/rederive) |
 | `sir-factory` | the build orchestrator (install→decompose→stamp→re-emit→grade→pack) | [npm](https://www.npmjs.com/package/sir-factory) · [source](https://github.com/rederive/sir-factory) |
 | `sir` plugin | the Claude Code skills & agents (`sir-verify`, `preflight`, role agents) | [source](https://github.com/rederive/sir-toolkit) |
+
+## Installing the verifier
+
+```sh
+npm i -g rederive@^0.5        # provides the `rdv` command
+npx -p rederive rdv check <bundle-dir>   # one-off, without a global install
+```
+
+v0.5 bundles (`specVersion: "0.5"`) need **rederive 0.5.0 or later**; an older `rdv` halts on them. Note that the
+npm package named `rdv` is an unrelated third party: always install or run `rdv` from the `rederive` package.
 
 ## Versioning & stewardship
 
