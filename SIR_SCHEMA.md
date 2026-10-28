@@ -1,4 +1,4 @@
-# SIR Schema — v0.1 FROZEN (2026-06-10) · v0.2 (2026-06-26) · v0.3 + v0.4 (2026-07-01) · v0.5 (2026-10-23)
+# SIR Schema — v0.1 FROZEN (2026-06-10) · v0.2 (2026-06-26) · v0.3 + v0.4 (2026-07-01) · v0.5 (2026-10-23, revised 2026-10-28)
 
 > **Canonical home: [github.com/rederive/sir-spec](https://github.com/rederive/sir-spec).** This copy ships with
 > the plugin and is kept in sync.
@@ -10,10 +10,13 @@
 > time, the resource-lifecycle oracle channel, and the token `RING` — consolidated from the verified-normalization
 > lineage in the **2026-07-01 unification** (see the note at §19; those sections were previously published in the
 > site spec under the colliding numbers "v0.2/v0.3 (2026-06-22)" and are renumbered here — no shipped bundle pins
-> that numbering). Earlier sections are unchanged. **Generation now targets v0.4.**
+> that numbering). Earlier sections are unchanged.
 > v0.5 (§23 + §10/§12 extensions) splits a unit into a language-neutral **primary** and one **language file**
 > per target language, freezes the practiced directive vocabulary, and adds the language-neutral vector encoding
-> `sir-canonical-v1`. Executable form: `rederive/cli/sir/`.
+> `sir-canonical-v1`. Executable form: `rederive/cli/sir/` and `rederive/cli/lang/`. **Generation now targets v0.5.**
+> The 2026-10-28 revision records what rederive learned re-deriving its own kernel (§23c): the value-depth model, throw
+> markers and result escaping, the js extension as a shipped and graded oracle, export resolution by `SIG`, the ts
+> conformance rules, cross-verification narrowing, and the one-judge rule.
 
 ---
 
@@ -505,7 +508,11 @@ which until now was practiced but never defined, and it un-defers cross-language
 (53 lines, rules R1–R9) plus one language file each converged cold emitters in JS, TypeScript and Rust,
 cross-verified 3000/3000. In the Tier A and Tier B pressure tests, `bytes` and `slugify` were verified in all
 three languages and `minimist` in JS and Rust. An independent Python implementation of the §10 encoding agreed
-byte-for-byte with the JS one on both oracle sets it was run against (`get_rgb`, `is_number`).
+byte-for-byte with the JS one on both oracle sets it was run against (`get_rgb`, `is_number`). **Revision evidence
+(2026-10-28):** rederive re-derived its own trust kernel through this format: 42 of 42 units verified (js and ts for all
+42, rust for 38; the other 4 are js/ts by domain), 67,976 cross-language comparisons in agreement, 1,905 held-out vectors
+plus 211 js-extension vectors, 162 findings logged in `rederive/selfhost/FINDINGS.md`. The units ship as one bundle,
+`@rederive/rederive-core`, which the kernel's own `rdv` (at the pinned commit) verifies; earlier kernels fail it.
 
 **Back-compat:** every v0.2–v0.4 bundle remains valid unchanged. A lone `<unit>.sir` with no language file is
 an implicit JS unit, exactly as before.
@@ -691,6 +698,37 @@ a publisher's bundle, as §15) → `cross-verified` (two or more languages agree
 against each other) → `oracle-anchored` (the primary oracle is `ANCHOR ref(<lang>:…)`-anchored, so agreement is
 not self-consistency).
 
+## 23c. How a verifier calls and judges an artifact (revision 2026-10-28)
+
+These rules were forced by rederive re-deriving its own kernel. Each closed a way a correct artifact was rejected, or a
+wrong one accepted.
+
+1. **The export is the one the `SIG` names.** A js or ts artifact is called through exactly the export its language
+   file's `SIG` declares: `export default function f…` → the default export; `export function f…` or
+   `export const f = …` → `f`; a bare legacy `f(…)` → `f`, or a default-exported `f`. Never another export, never "the
+   first function". (A verifier that guessed could type-check one function and grade another.)
+2. **ts conformance runs in the artifact's own scope.** The check is appended to a verbatim copy of the artifact, so a
+   `SIG` may name types the artifact itself declares (`Json`, `TypeNode`), exported or not, while the value checked is
+   still the artifact's real export. The `SIG` is one declaration: a `;` at the top level, `=` (other than `=>`), a
+   comment or a line break is refused, while a `;` inside an object type literal is a member separator. A `SIG` may not
+   use `any`, `never`, `typeof`, `import` or `infer`: each lets every artifact conform. Two controls guard the check
+   itself: a deliberately foreign canary must **not** conform, and no parameter may be `never`.
+3. **The any-ban is a lexer, and it fails closed.** It reads code positions only (not strings, comments or template
+   text), as whole words, honoring the directives tsc honors (`@ts-ignore`, `@ts-expect-error`, `@ts-nocheck`, with
+   Unicode case folding). Where it must guess whether a `/` starts a regex or divides (a line start, or after a word
+   that may be an identifier), it reads the source both ways and counts both readings' hits.
+4. **A result outside the abstract envelope is narrowed, never compared.** In cross-verification, an input whose
+   result any language cannot encode neutrally (a lone surrogate, an integer past 64 bits under `json`) is set aside.
+   Comparing them made every such result agree whatever its value, and made a language that cannot hold one
+   (Rust: a lone surrogate) falsely diverge.
+5. **Rust:** every harness line is an envelope (`{ok}` or `{throw}`), and a `Result`'s `Err` is a throw. Transport
+   faults are narrowed, not charged to the artifact. A scalar result is pinned to the `SIG`'s declared type. Crates
+   build with `--locked` against their shipped lock. The harness reads JSON with its own reader, never the host's.
+6. **One judge.** A factory, lab or CI that grades artifacts must judge with the shipped verifier's own modules
+   (codec, parser, lints, drivers, grader), generated from them and hash-locked, never a copy maintained by hand. A
+   verdict from a different judge is not a claim. (Two hand-kept judges drifted in both directions: the lab rejected
+   correct emissions the verifier accepted, and kept Rust crates the verifier refused.)
+
 ## 10. Extension (v0.5): the language-neutral vector encoding `sir-canonical-v1`
 
 Mandatory for every oracle a `lang-variant` bundle carries; optional before that. Every value is tagged with its
@@ -730,12 +768,38 @@ shape is not an oracle and hashing it is an error, as is hashing one whose value
 reader fetches each hash **by directive**: a primary that carries a table has two canonical hashes, and "the
 first `CANONICAL-SHA256` in the file" is the wrong one.
 
+**Depth (revision 2026-10-28).** One cap, counted one way everywhere. The whole value is depth 0 and each child
+*value* is one deeper: a list or tuple element, a map key or value, a record field value. A union alternative, the
+`json` position and a tag's own fields add nothing. A value deeper than **100** is refused by encode, decode and result
+escaping alike, as a grammar error, never a host stack overflow. A *type* expression nests at most **16** composites. The
+canonical string refuses a tree deeper than 4 × 100 + 16 raw levels. Consequence, stated so no one relies on the
+opposite: an encoded result can be about twice as deep as the value it encodes, so no oracle carries an accept case
+for a codec unit near the cap; the refuse side is pinned by a past-cap argument whose result is a throw.
+
+**Throws and result escaping.** A throw marker is a map with **exactly one own key**: `__throw` (legacy oracles) or
+`__threw` (a driver's own catch). Anything else is a value. A verifier **escapes every returned value** before encoding
+it: a plain map carrying a codec marker key (`__t`, `__throw`, `__threw`) as an own key, at any depth, becomes
+`{__t: 'obj', v}`, and the escape descends into host Maps and Sets. So an artifact that *returns* `{"__threw": "x"}` is
+graded as the map it returned, never as a throw. The escape is the verifier's step, outside the artifact's call: a value
+it cannot carry is narrowed, never the artifact's throw.
+
 **Envelope extension.** Vectors whose values have no neutral meaning (a boxed `Number`, a `RegExp`, `undefined`,
-a sparse array) are refused by the neutral encoder. A legacy oracle's such vectors move to
+a sparse array, a bigint, a lone surrogate, a host Map or Set) are refused by the neutral encoder. They move to
 `oracles/<unit>.js.json` (`encoding: js-native-v0.4`, `envelope: js`), graded only by the `js` variant and
 declared by the `.js.sir`'s `ENVELOPE` widening. That is how a JS-shaped unit coexists with the neutral form
 without the form absorbing JS quirks. Legacy oracles are **re-encoded** losslessly, never regenerated
 (`encode-oracle`): the same vectors, with the original kept as `<unit>.legacy.json`.
+- The **js-native codec** adds tags the neutral one never writes: `bigint`, `bytes` under `json`, `undefined`, text
+  with `cu:'utf16'`, and `jsmap` / `jsset` (entries in **insertion order**, which the host can observe).
+- The extension's **expected** value is escaped exactly as a driver escapes a result (an expected throw stays a throw),
+  so both sides of a comparison pass through the same steps.
+- An expected value the verifier cannot encode is the **verifier's** fault, never an artifact's. The encoder refuses
+  such a vector when the oracle is written, not only at grade time.
+- **Map key order** is graded only here. A shared oracle carries every map argument as a canonical (sorted) map, so a
+  unit whose result depends on its input's key order puts every such probe in the extension, where arguments keep
+  their legacy order.
+- The extension ships with the bundle and is graded by the verifier (§ Bundle contract v0.5). Until this revision it
+  was graded only by the factory, and a bundle's verdict covered only the shared slice.
 
 ## 12. Extension (v0.5): cross-language anchors
 
@@ -757,6 +821,7 @@ keyed `lang:<id>`:
 ```
 "variants": {
   "package":   { …the v0.4 fields… },
+  "lang:js":   { …as below…, "extensionOracle": "oracles/<unit>.js.json", "extensionOracleSha256": "…" },
   "lang:rust": { "lang": "rust", "sir": "sir/<unit>.rust.sir", "langSha256": "…",
                  "primarySha256": "…", "oracle": "oracles/<unit>.json", "oracleSha256": "…",
                  "src": "src/<unit>-rs", "srcSha256": "…", "verified": { "rung": "cross-verified", … } }
@@ -769,7 +834,9 @@ its library crate (`Cargo.toml`, `Cargo.lock` when it has dependencies, `src/`),
 A directory's `srcSha256` is its **tree hash**: sha256 over the sorted lines `<relative path>\0<sha256 of the file>\n`
 for every file except build output (`target/`). The variant's oracle is the unit's one canonical oracle (§10
 `sir-canonical-v1`), whose vector-set hash a verifier checks against the file's `canonicalSha256` and the primary's
-`ORACLE … CANONICAL-SHA256` before grading anything.
+`ORACLE … CANONICAL-SHA256` before grading anything. A `js` variant whose unit has an envelope extension names it
+(`extensionOracle`, `extensionOracleSha256`); a verifier checks its hash and grades it with the shared oracle, and the
+variant is verified only if **both** slices pass. A named extension that is missing or altered fails the variant.
 `verified {rung}` appears only where an artifact was actually verified. The features are `lang-variant`
 (detected from a `<unit>.<lang>.sir` file or a `lang:<id>` key) and `cross-lang-anchor`. An rdv declares the
 **languages it can harness** beside the features it implements, and halts naming the missing language. It reads
@@ -784,8 +851,9 @@ and `@ts-ignore` are rejected), then grades its emitted JavaScript. **rust** rea
 plus a harness generated from the primary's abstract `SIG`, which pins every argument type and every scalar result
 type, then grades the binary over stdin/stdout, f64 by its bits and u64/i64 exactly. A verifier checks rungs up to
 `harness-verified`; a bundle's claimed `cross-verified` is reported, not re-checked. Toolchains are the consumer's own:
-a variant whose toolchain is absent halts the check with the install hint. `cross-lang-anchor` is declared and not
-yet implemented, as is carried data inside a language variant.
+a variant whose toolchain is absent halts the check with the install hint. The `js` extension is graded by the
+verifier (revision 2026-10-28). `cross-lang-anchor` is declared and not yet implemented, as is carried data inside a
+language variant.
 
 ## Deferred (v0.5)
 
@@ -794,3 +862,8 @@ yet implemented, as is carried data inside a language variant.
 - Language-file inheritance (`EXTENDS`, e.g. `ts` from `js`). Language files are self-contained in v0.5.
 - `CARRIED` sub-fields (`SHAPE`, `CANONICAL-SHA256`, `AUTHORITY`) as scoped AST children. Today they parse as
   continuations of `CARRIED`.
+- Grading the `ts` variant on the js envelope extension. Today ts is graded on the shared slice only.
+- The codec accept edge: a cap anywhere between the deepest encodable result and 100 passes every oracle (§10 ext.
+  Depth). Grading codec results under the raw cap would close it.
+- Refusing unbalanced braces in a ts `SIG` itself. Today an unbalanced `SIG` is caught one step later, by tsc.
+- Carried data in a ts variant inside the verifier (the factory supports it).
